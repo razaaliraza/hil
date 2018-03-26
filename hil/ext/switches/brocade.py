@@ -14,6 +14,9 @@ from hil.migrations import paths
 from hil.model import db, Switch, SwitchSession
 from hil.errors import BadArgumentError
 from hil.model import BigIntegerType
+from hil.errors import SwitchError
+from hil.ext.switches.common import check_native_networks, parse_vlans
+
 
 paths[__name__] = join(dirname(__file__), 'migrations', 'brocade')
 
@@ -47,6 +50,9 @@ class Brocade(Switch, SwitchSession):
 
     def session(self):
         return self
+
+    def ensure_legal_operation(self, nic, op_type, channel):
+        check_native_networks(nic, op_type, channel)
 
     @staticmethod
     def validate_port_name(port):
@@ -173,11 +179,20 @@ class Brocade(Switch, SwitchSession):
             url = self._construct_url(interface, suffix='trunk')
             response = self._make_request('GET', url)
             root = etree.fromstring(response.text)
-            vlans = root.\
+            vlans = root. \
                 find(self._construct_tag('allowed')).\
                 find(self._construct_tag('vlan')).\
                 find(self._construct_tag('add')).text
-            return [('vlan/%s' % x, x) for x in vlans.split(',')]
+
+            # finds a comma separated list of integers and/or ranges.
+            # Sample: 12,14-18,23,28,80-90 or 20 or 20,22 or 20-22
+            match = re.search(r'(\d+(-\d+)?)(,\d+(-\d+)?)*', vlans)
+            if match is None:
+                return []
+
+            vlan_list = parse_vlans(match.group())
+
+            return [('vlan/%s' % x, x) for x in vlan_list]
         except AttributeError:
             return []
 
@@ -301,5 +316,10 @@ class Brocade(Switch, SwitchSession):
         r = requests.request(method, url, data=data, auth=self._auth)
         if r.status_code >= 400 and \
            r.status_code not in acceptable_error_codes:
-            logger.error('Bad Request to switch. Response: %s', r.text)
+            logger.error('Bad Request to switch. '
+                         'Response: %s and '
+                         'Reason: %s', r.text, r.reason)
+            raise SwitchError('Bad Request to switch. '
+                              'Response: %s and '
+                              'Reason: %s', r.text, r.reason)
         return r
