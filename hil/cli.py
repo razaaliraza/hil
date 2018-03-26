@@ -1,17 +1,3 @@
-# Copyright 2013-2014 Massachusetts Open Cloud Contributors
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the
-# License.  You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing,
-# software distributed under the License is distributed on an "AS
-# IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
-# express or implied.  See the License for the specific language
-# governing permissions and limitations under the License.
-
 """This module implements the HIL command line tool."""
 from hil import config, server, migrations
 from hil.config import cfg
@@ -26,10 +12,13 @@ import urllib
 import schema
 import logging
 
+import pkg_resources
+
 from functools import wraps
 
 from hil.client.client import Client, RequestsHTTPClient, KeystoneHTTPClient
 from hil.client.base import FailedAPICallException
+from hil.errors import BadArgumentError
 
 
 logger = logging.getLogger(__name__)
@@ -37,7 +26,7 @@ command_dict = {}
 usage_dict = {}
 MIN_PORT_NUMBER = 1
 MAX_PORT_NUMBER = 2**16 - 1
-
+VERSION = pkg_resources.require('hil')[0].version
 
 # An instance of HTTPClient, which will be used to make the request.
 http_client = None
@@ -230,6 +219,12 @@ def do_delete(url):
 
 
 @cmd
+def version():
+    """Check hil version"""
+    sys.stdout.write("HIL version: %s\n" % VERSION)
+
+
+@cmd
 def serve(port):
     """Run a development api server. Don't use this in production."""
     try:
@@ -295,13 +290,28 @@ def serve_networks():
 
 
 @cmd
+def list_users():
+    """List all users when the database authentication is active.
+
+    Administrative  privileges required.
+    """
+    q = C.user.list()
+    for item in q.items():
+        sys.stdout.write('%s \t : %s\n' % (item[0], item[1]))
+
+
+@cmd
 def user_create(username, password, is_admin):
     """Create a user <username> with password <password>.
 
     <is_admin> may be either "admin" or "regular", and determines whether
-    the user has administrative priveledges.
+    the user has administrative privileges.
     """
-    C.user.create(username, password, is_admin)
+    if is_admin not in ('admin', 'regular'):
+        raise ValueError(
+            "invalid privilege type: must be either 'admin' or 'regular'."
+            )
+    C.user.create(username, password, is_admin == 'admin')
 
 
 @cmd
@@ -432,29 +442,7 @@ def node_register(node, subtype, *args):
         if obm is of type: ipmi then provide arguments
         "ipmi", <hostname>, <ipmi-username>, <ipmi-password>
     """
-    obm_api = "http://schema.massopencloud.org/haas/v0/obm/"
-    obm_types = ["ipmi", "mock"]
-    # Currently the classes are hardcoded
-    # In principle this should come from api.py
-    # In future an api call to list which plugins are active will be added.
-
-    if subtype in obm_types:
-        if len(args) == 3:
-            obminfo = {"type": obm_api + subtype, "host": args[0],
-                       "user": args[1], "password": args[2]
-                       }
-        else:
-            sys.stderr.write('ERROR: subtype ' + subtype +
-                             ' requires exactly 3 arguments\n')
-            sys.stderr.write('<hostname> <ipmi-username> <ipmi-password>\n')
-            return
-    else:
-        sys.stderr.write('ERROR: Wrong OBM subtype supplied\n')
-        sys.stderr.write('Supported OBM sub-types: ipmi, mock\n')
-        return
-
-    url = object_url('node', node)
-    do_put(url, data={"obm": obminfo})
+    C.node.register(node, subtype, *args)
 
 
 @cmd
@@ -478,13 +466,12 @@ def node_power_off(node):
 @cmd
 def node_set_bootdev(node, dev):
     """
-    Sets <node> to boot from <dev> persistenly
+    Sets <node> to boot from <dev> persistently
 
     eg; hil node_set_bootdev dell-23 pxe
     for IPMI, dev can be set to disk, pxe, or none
     """
-    url = object_url('node', node, 'boot_device')
-    do_put(url, data={'bootdev': dev})
+    C.node.set_bootdev(node, dev)
 
 
 @cmd
@@ -518,13 +505,13 @@ def headnode_delete_hnic(headnode, nic):
 @cmd
 def node_connect_network(node, nic, network, channel):
     """Connect <node> to <network> on given <nic> and <channel>"""
-    C.node.connect_network(node, nic, network, channel)
+    print C.node.connect_network(node, nic, network, channel)
 
 
 @cmd
 def node_detach_network(node, nic, network):
     """Detach <node> from the given <network> on the given <nic>"""
-    C.node.detach_network(node, nic, network)
+    print C.node.detach_network(node, nic, network)
 
 
 @cmd
@@ -544,15 +531,13 @@ def headnode_detach_network(headnode, hnic):
 @cmd
 def metadata_set(node, label, value):
     """Register metadata with <label> and <value> with <node> """
-    url = object_url('node', node, 'metadata', label)
-    do_put(url, data={'value': value})
+    C.node.metadata_set(node, label, value)
 
 
 @cmd
 def metadata_delete(node, label):
     """Delete metadata with <label> from a <node>"""
-    url = object_url('node', node, 'metadata', label)
-    do_delete(url)
+    C.node.metadata_delete(node, label)
 
 
 @cmd
@@ -580,7 +565,7 @@ def switch_register(switch, subtype, *args):
                              '<hostname> <username> <password>'
                              '<dummy_vlan_no>\n')
             return
-    elif subtype == "mock":
+    elif subtype == "mock" or subtype == "ovs":
         if len(args) == 3:
             switchinfo = {"type": switch_api + subtype, "hostname": args[0],
                           "username": args[1], "password": args[2]}
@@ -660,7 +645,7 @@ def port_detach_nic(switch, port):
 @cmd
 def port_revert(switch, port):
     """Detach a <port> on a <switch> from all attached networks."""
-    C.port.port_revert(switch, port)
+    print C.port.port_revert(switch, port)
 
 
 @cmd
@@ -668,12 +653,7 @@ def list_network_attachments(network, project):
     """List nodes connected to a network
     <project> may be either "all" or a specific project name.
     """
-    url = object_url('network', network, 'attachments')
-
-    if project == "all":
-        do_get(url)
-    else:
-        do_get(url, params={'project': project})
+    print C.network.list_network_attachments(network, project)
 
 
 @cmd
@@ -830,6 +810,12 @@ def list_active_extensions():
 
 
 @cmd
+def show_networking_action(status_id):
+    """Displays the status of the networking action"""
+    print C.node.show_networking_action(status_id)
+
+
+@cmd
 def help(*commands):
     """Display usage of all following <commands>, or of all commands if none
     are given
@@ -864,6 +850,8 @@ def main():
         except FailedAPICallException as e:
             sys.exit('Error: %s\n' % e.message)
         except InvalidAPIArgumentsException as e:
+            sys.exit('Error: %s\n' % e.message)
+        except BadArgumentError as e:
             sys.exit('Error: %s\n' % e.message)
         except Exception as e:
             sys.exit('Unexpected error: %s\n' % e.message)

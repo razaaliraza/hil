@@ -1,24 +1,9 @@
-# Copyright 2013-2014 Massachusetts Open Cloud Contributors
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the
-# License. You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing,
-# software distributed under the License is distributed on an "AS
-# IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
-# express or implied. See the License for the specific language
-# governing permissions and limitations under the License.
-
 """A switch driver for the Nexus 5500
 
 Currently the driver uses telnet to connect to the switch's console; in the
 long term we want to be using SNMP.
 """
 
-import pexpect
 import re
 import schema
 import logging
@@ -80,6 +65,9 @@ class Nexus(Switch):
                                    " ethernet1/0/10")
         return
 
+    def get_capabilities(self):
+        return ['nativeless-trunk-mode']
+
 
 class _Session(_console.Session):
 
@@ -93,45 +81,40 @@ class _Session(_console.Session):
         self.dummy_vlan = dummy_vlan
 
     def enter_if_prompt(self, interface):
-        self.console.sendline('config terminal')
-        self.console.sendline('int %s' % interface)
+        self._sendline('config terminal')
+        self._sendline('int %s' % interface)
 
     def exit_if_prompt(self):
-        self.console.sendline('exit')
-        self.console.sendline('exit')
+        self._sendline('exit')
+        self._sendline('exit')
 
     def enable_vlan(self, vlan_id):
-        self.console.sendline('sw')
-        self.console.sendline('sw mode trunk')
-        self.console.sendline('sw trunk allowed vlan add %s' % vlan_id)
+        self._sendline('sw')
+        self._sendline('sw mode trunk')
+        self._sendline('sw trunk allowed vlan add %s' % vlan_id)
 
     def disable_vlan(self, vlan_id):
-        self.console.sendline('sw trunk allowed vlan remove %s' % vlan_id)
+        self._sendline('sw trunk allowed vlan remove %s' % vlan_id)
 
     def set_native(self, old, new):
         if old is not None:
             self.disable_vlan(old)
-        self.console.sendline('sw trunk native vlan %s' % new)
+        self._sendline('sw trunk native vlan %s' % new)
         self.enable_vlan(new)
 
     def disable_native(self, vlan_id):
         self.disable_vlan(vlan_id)
-        self.console.sendline('sw trunk native vlan ' + self.dummy_vlan)
-
-    def disconnect(self):
-        if self._should_save('nexus'):
-            self._save_running_config()
-        self.console.sendline('exit')
+        self._sendline('sw trunk native vlan ' + self.dummy_vlan)
 
     @staticmethod
     def connect(switch):
         """Connect to the switch."""
-        console = pexpect.spawn('telnet ' + switch.hostname)
-        console.expect('login: ')
-        console.sendline(switch.username)
-        console.expect('Password: ')
-        console.sendline(switch.password)
 
+        console = _console.login(switch)
+
+        # send a new line so that we can "expect" a prompt again if we already
+        # matched when logged in using pubkey
+        console.sendline('')
         prompts = _console.get_prompts(console)
 
         return _Session(console=console,
@@ -146,7 +129,7 @@ class _Session(_console.Session):
             r'  [A-Z][^:]*:[^\n]*\n',
             r'[\r\n]+.+# ',
         ]
-        self.console.sendline('show int sw')
+        self._sendline('show int sw')
 
         # Find the first interface name
         self.console.expect(alternatives[1])
@@ -230,19 +213,15 @@ class _Session(_console.Session):
             result[k] = networks
         return result
 
-    def _save_running_config(self):
-        """saves the running config to startup config"""
-
-        self.console.sendline('copy running-config startup-config')
+    def save_running_config(self):
+        self._sendline('copy running-config startup-config')
         self.console.expect('Copy complete')
         logger.debug('Copy succeeded')
 
-    def _get_config(self, config_type):
-        """returns the requested configuration file from the switch"""
-
+    def get_config(self, config_type):
         self._set_terminal_lines('unlimited')
         self.console.expect(r'[\r\n]+.+# ')
-        self.console.sendline('show ' + config_type + '-config')
+        self._sendline('show ' + config_type + '-config')
         self.console.expect(r'[\r\n]+.+# ')
         config = self.console.after
 
@@ -266,5 +245,5 @@ class _Session(_console.Session):
         return config
 
     def disable_port(self):
-        self.console.sendline('sw trunk allowed vlan none')
-        self.console.sendline('sw trunk native vlan ' + self.dummy_vlan)
+        self._sendline('sw trunk allowed vlan none')
+        self._sendline('sw trunk native vlan ' + self.dummy_vlan)

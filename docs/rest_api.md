@@ -246,13 +246,16 @@ Returns a JSON dictionary of dictionaries, where the exterior dictionary is inde
 the network name and the value of each key is another dictionary with keys corresponding
 to that network's id and projects
 
+Response contains all networks if the user is an admin. Otherwise, response
+only contains all public networks.
+
 The response must contain the following fields:
 
 * "network", the name of a network
 * "network_id", the id of the network
 * "projects", a list of projects with access to the network or 'None' if network is public
 
-Example Response:
+Example Response for an admin user:
 
     {
         "netA": {
@@ -265,9 +268,23 @@ Example Response:
         }
     }
 
+Example Response for a regular user:
+
+    {
+        "netA": {
+            "network_id": "102",
+            "projects": None
+        },
+        "netB": {
+            "network_id": "103",
+            "projects": None
+        }
+    }
+
 Authorization requirements:
 
-* Administrative access is required
+* Administrative access is required to list all networks
+* No special access is required to list all public networks
 
 #### list_network_attachments
 
@@ -357,9 +374,20 @@ a default, which should be some form of "untagged."
 
 Networks are connected and detached asynchronously. If successful, this
 API call returns a status code of 202 Accepted, and queues the network
-operation to be preformed. Each nic may have no more than one pending
+operation to be performed. Each nic may have no more than one pending
 network operation; an attempt to queue a second action will result in an
 error.
+
+It is important that users of this API check the status of their request using
+the `show_networking_action` API to ensure that their previous calls were
+successful before queuing any new actions on the same nic.
+
+Response body:
+
+    {
+        "status_id": <unique_id>,
+    }
+
 
 Authorization requirements:
 
@@ -393,6 +421,17 @@ API call returns a status code of 202 Accepted, and queues the network
 operation to be preformed. Each nic may have no more than one pending
 network operation; an attempt to queue a second action will result in an
 error.
+
+Just like the `node_attach_network` API, please check the status using the
+`show_networking_action` API to check the status of previous calls before
+queuing any new actions.
+
+Response body:
+
+    {
+        "status_id": <unique_id>,
+    }
+
 
 Authorization requirements:
 
@@ -751,6 +790,11 @@ Possible errors:
 Return `<node>` to the free pool. `<node>` must belong to the project
 `<project>`. It must not be attached to any networks, or have any
 pending network actions.
+
+If a maintenance pool is configured, the maintenance service will be
+notified and the node will be moved into the maintenance project.
+Otherwise, the node will go directly to the free pool.
+Read `docs/maintenance-pool.md` for more information.
 
 Authorization requirements:
 
@@ -1157,7 +1201,15 @@ Possible errors:
 
 `POST /switch/<switch>/port/<port>/revert`
 
-Detach the port from all networks.
+Detach the port from all networks. This is an asynchronous call. It's a good
+idea to check the status using the `show_networking_action` API before queuing
+any new actions on the same port.
+
+Response body:
+
+    {
+        "status_id": <unique_id>,
+    }
 
 Authorization requirements:
 
@@ -1219,6 +1271,23 @@ API calls provided by specific extensions. They may not exist in all
 configurations.
 
 ### The `hil.ext.auth.database` auth backend
+
+#### list_users
+
+`GET /auth/basic/users`
+
+List all users
+
+Response body:
+
+    {
+        'hil_user': {'is_admin': True, 'projects': ["runway"]}
+        'mock_user': {'is_admin': False, 'projects': ["manhattan"]}
+    }
+
+Authorization requirements:
+
+* Administrative access.
 
 #### user_create
 
@@ -1304,3 +1373,40 @@ Remove a user from a project.
 Authorization requirements:
 
 * Administrative access.
+
+#### show_networking_action
+
+`GET /networking_action/<status_id>`
+
+Get the status of the networking call queued by node_connect_network,
+node_detach_network, or port_revert, where <status_id> is returned by any
+of the network calls.
+
+Response Body:
+
+{
+    "status": <status>,
+    "node": <node-label>,
+    "nic": <nic-label>,
+    "new_network": <network-name>
+    "type": <type of networking action>
+    "channel": <network channel>
+}
+
+where:
+* `status` can either be "DONE", "PENDING", or "ERROR".
+* `new_network` can be `null` in case of `node_detach_network` or `revert_port`.
+* `type` can be `revert_port` or `modify_port`.
+* `channel` could be '' in case of revert_port.
+
+The status of a networking call is kept until a new action on the same nic is
+added, after which the old entry is deleted.
+
+Authorization requirements:
+
+* Access to the project which owns the node that has the nic on which the
+ networking action is active, or administrative access.
+
+Possible errors:
+
+* 404, if the status_id is not found.

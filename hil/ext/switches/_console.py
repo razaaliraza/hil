@@ -1,24 +1,15 @@
-# Copyright 2013-2014 Massachusetts Open Cloud Contributors
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the
-# License.  You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing,
-# software distributed under the License is distributed on an "AS
-# IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
-# express or implied.  See the License for the specific language
-# governing permissions and limitations under the License.
 """Common functionality for switches with a cisco-like console."""
+
+import logging
+import pexpect
 
 from abc import ABCMeta, abstractmethod
 from hil.model import Port, NetworkAttachment, SwitchSession
+from hil.ext.switches.common import should_save
 import re
-from hil.config import cfg
 
 _CHANNEL_RE = re.compile(r'vlan/(\d+)')
+logger = logging.getLogger(__name__)
 
 
 class Session(SwitchSession):
@@ -71,8 +62,21 @@ class Session(SwitchSession):
         """Disable all vlans on the current port."""
 
     @abstractmethod
+    def save_running_config(self):
+        """saves the running config to startup config"""
+
     def disconnect(self):
-        """End the session. Must be at the main prompt."""
+        """End the session. Must be at the main prompt. Handles the scenario
+        where the switch only exits out of enable mode and doesn't actually
+        log out"""
+
+        if should_save(self):
+            self.save_running_config()
+        self._sendline('exit')
+        alternatives = [pexpect.EOF, '>']
+        if self.console.expect(alternatives):
+            self._sendline('exit')
+        logger.debug('Logged out of switch %r', self.switch)
 
     def modify_port(self, port, channel, new_network):
         interface = port
@@ -120,15 +124,6 @@ class Session(SwitchSession):
         self.exit_if_prompt()
         self.console.expect(self.config_prompt)
 
-    def _should_save(self, switch_type):
-        """checks the config file to see if switch should save or not"""
-
-        switch_ext = 'hil.ext.switches.' + switch_type
-        if cfg.has_option(switch_ext, 'save'):
-            if not cfg.getboolean(switch_ext, 'save'):
-                return False
-        return True
-
     def _set_terminal_lines(self, lines):
         """set the terminal lines to unlimited or default"""
 
@@ -136,6 +131,12 @@ class Session(SwitchSession):
             self.console.sendline('terminal length 0')
         elif lines == 'default':
             self.console.sendline('terminal length 40')
+
+    def _sendline(self, line):
+        """logs switch command and then sends it"""
+        logger.debug('Sending to switch %r: %r',
+                     self.switch, line)
+        self.console.sendline(line)
 
 
 def get_prompts(console):
@@ -164,3 +165,28 @@ def get_prompts(console):
             'if_prompt': re.escape(cmd_prompt[:-1]) + '\(config\\-if[^)]*\)#',
             'main_prompt': re.escape(cmd_prompt),
         }
+
+
+def login(switch):
+    """Login to switch using either a password or key.
+
+    `switch` must have the attributes, `username` and `password`.
+    """
+
+    alternatives = ['User Name:', '[Pp]assword:*', '>', '#']
+    console = pexpect.spawn(
+            'ssh ' + switch.username + '@' + switch.hostname)
+
+    outcome = console.expect(alternatives)
+    if outcome == 0:
+        # some switches, like the dell powerconnect, ask for the username again
+        console.sendline(switch.username)
+        outcome = console.expect(alternatives)
+    if outcome == 1:
+        console.sendline(switch.password)
+        outcome = console.expect(alternatives)
+    if outcome == 2:
+        console.sendline('enable')
+
+    logger.debug('Logged in to switch %r', switch)
+    return console

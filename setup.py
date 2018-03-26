@@ -1,17 +1,3 @@
-# Copyright 2013-2015 Massachusetts Open Cloud Contributors
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the
-# License.  You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing,
-# software distributed under the License is distributed on an "AS
-# IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
-# express or implied.  See the License for the specific language
-# governing permissions and limitations under the License.
-
 # pylint: disable=missing-docstring
 
 from setuptools import setup, find_packages
@@ -23,10 +9,10 @@ def _get_readme():
     with open(join(dirname(__file__), readme_file)) as f:
         return f.read()
 
+
 setup(name='hil',
-      version='0.2rc2',
       maintainer='Developers of the HIL Project at MOC',
-      maintainer_email='hil-dev-list@bu.edu',
+      maintainer_email='hil@lists.massopen.cloud',
       url='https://github.com/CCI-MOC/hil',
       description='A bare-metal isolation service that automates allocation '
                   'and management of non-virtualized compute resources across '
@@ -46,7 +32,8 @@ setup(name='hil',
                    'Programming Language :: Python',
                   ],
       keywords='cloud bare-metal setuptools data-center isolation',
-
+      setup_requires=['setuptools_scm'],
+      use_scm_version=True,
       packages=find_packages(),
       # TODO: we should merge scripts into entry_points, below.
       scripts=['scripts/hil', 'scripts/create_bridges'],
@@ -87,6 +74,10 @@ setup(name='hil',
       #
       # For Flask-SQLAlchemy, we are using non-standard semver bounds as
       # release 2.2 is backwards-incompatible.
+      #
+      # We are blacklisting keystonemiddleware version 4.19 due to a bug[3].
+      # [3]: https://bugs.launchpad.net/keystonemiddleware/+bug/1737115
+      # See #923 for details.
       install_requires=['Flask-SQLAlchemy>=2.1,<2.2',
                         'Flask-Migrate>=1.8,<2.0',
                         'Flask-Script>=2.0.5,<3.0',
@@ -101,15 +92,16 @@ setup(name='hil',
                         ],
       extras_require={
           'tests': [
-                'pytest>=3.0.0,<4.0',
-                'pytest-catchlog>=1.2.2,<2.0',
+                'pytest>=3.3.0,<4.0',
                 'pytest-cov>2.0,<3.0',
                 'pytest-xdist>=1.14,<2.0',
-                'pep8>=1.7.0',
+                'pycodestyle>=2.3.1',
                 'pylint>=1.6.0,<2.0',
                 'requests_mock>=1.0.0,<2.0',
+                'coverage>=4.5.1,<5.0.0',
+                'coveralls>=1.2.0,<2.0.0',
           ],
           'postgres': ['psycopg2>=2.7,<3.0'],
-          'keystone-auth-backend': ['keystonemiddleware>=4.17,<5.0'],
+          'keystone-auth-backend': ['keystonemiddleware>=4.17,!=4.19,<5.0'],
           'keystone-client': ['python-keystoneclient>=3.13,<4.0'],
       })

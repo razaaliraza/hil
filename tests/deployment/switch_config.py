@@ -1,17 +1,3 @@
-# Copyright 2013-2017 Massachusetts Open Cloud Contributors
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the
-# License.  You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing,
-# software distributed under the License is distributed on an "AS
-# IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
-# express or implied.  See the License for the specific language
-# governing permissions and limitations under the License.
-
 """Deployment tests re: switch configuration.
 
 For guidance on running these tests, see the section on deployment tests
@@ -27,9 +13,7 @@ from hil.test_common import config, config_testsuite, fresh_database, \
 import pytest
 import json
 
-DELL5500 = 'http://schema.massopencloud.org/haas/v0/switches/powerconnect55xx'
-NEXUS = 'http://schema.massopencloud.org/haas/v0/switches/nexus'
-DELLN3000 = 'http://schema.massopencloud.org/haas/v0/switches/delln3000'
+BROCADE = 'http://schema.massopencloud.org/haas/v0/switches/brocade'
 
 
 @pytest.fixture
@@ -41,6 +25,12 @@ def configure():
             'save': 'True'
          },
         'hil.ext.switches.nexus': {
+            'save': 'True'
+        },
+        'hil.ext.switches.n3000': {
+            'save': 'True'
+        },
+        'hil.ext.switches.dellnos9': {
             'save': 'True'
         }
     })
@@ -64,29 +54,28 @@ pytestmark = pytest.mark.usefixtures('configure',
 
 
 @pytest.fixture
-def not_dell_or_nexus():
-    """open the site-layout file to see if we don't have a dell or cisco nexus
-    switch"""
+def is_brocade():
+    """open the site-layout file to see if we have a brocade switch"""
 
     with open('site-layout.json') as layout_data:
         layout = json.load(layout_data)
     switch_type = layout['switches'][0]['type']
-    return (switch_type != NEXUS and switch_type != DELL5500 and
-            switch_type != DELLN3000)
+    return (switch_type == BROCADE)
 
 
-@pytest.mark.skipif(not_dell_or_nexus(),
-                    reason="Skipping because not a dell or cisco switch")
+@pytest.mark.skipif(is_brocade(), reason="Skipping because brocade switch")
 class TestSwitchSavingToFlash(NetworkTest):
-    """ saves the running config to the flash memory. Test is only for the dell
-        switch"""
+    """ saves the running config to the flash memory and tests if it succeeded
+    by comparing the running and startup config files"""
 
     def get_config(self, config_type):
-        """returns the switch configuration file"""
+        """helper method to get the switch config file by calling
+        SwitchSession's get_config()
+        """
 
         switch = model.Switch.query.one()
         session = switch.session()
-        config = session._get_config(config_type)
+        config = session.get_config(config_type)
         session.disconnect()
         return config
 

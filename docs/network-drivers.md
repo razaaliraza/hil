@@ -70,25 +70,36 @@ Doing so is not difficult, and it is critical for security.
 ## Switch drivers
 
 At present, all switch drivers shipped with HIL require that the VLAN
-pool allocator is in use. There are three switch drivers shipped with
+pool allocator is in use. There are five switch drivers shipped with
 HIL:
 
 * ``hil.ext.switches.dell``, which provides a driver for the Dell
   Powerconnect 5500 series switches.
-* ``hil.ext.switches.n3000``, which provides a driver for the Dell N3000
-  series switches.
 * ``hil.ext.switches.nexus``, which provides a driver for some Cisco
   Nexus switches. Only the 3500 and 5500 have been tested, though it is
   possible that other models will work as well.
 * ``hil.ext.switches.brocade``, for the brocade VDX 6740.
+* ``hil.ext.switches.n3000``, for Dell N3000 series switches.
+* ``hil.ext.switches.dellnos9``, for Dell switches running Dell Networking OS 9.
 
-None of the drivers require any extension-specific config options. Per the
-information in `rest_api.md`, the details of certain API calls are
+Different switches may or may not have certain capabilities. The `show_switch` call
+can be used to see what a switch is capable of. Currently, HIL exposes the
+following switch capabilities:
+
+* `nativeless-trunk-mode` : If supported, a switchport can be configured to have
+no native networks in trunk mode. If not supported, then the switchport must be
+first connected to a native network before adding any tagged VLANs.
+
+* There should be **no "enable" password** for switch users which will be used
+by HIL.
+
+
+Per the information in `rest_api.md`, the details of certain API calls are
 driver-dependant, below are the details for each of these switches.
 
 ### Powerconnect 5500 driver
 
-#### Switch preperation
+#### Switch preparation
 
 A few commands are necessary to run on the switch before it can be used with HIL.
 
@@ -96,6 +107,15 @@ A few commands are necessary to run on the switch before it can be used with HIL
 
    configure
    vlan 2-4094
+
+2. This switch uses ssh for connection. Be sure that ssh is enabled on the switch.
+
+3. If you choose to login using the public key, then provide any string as the
+password. The user running the HIL network daemon should have access to the
+private key.
+
+4. For any switchport that you register, please make sure that there are no
+VLANs added to it in trunk mode.
 
 #### switch_register
 
@@ -119,7 +139,7 @@ they are not validated by HIL (this will be fixed in future versions).
 
 ### Dell N3000 driver
 
-#### Switch preperation
+#### Switch preparation
 
 1. Just like the Powerconnect 5500, every VLAN that could be used on the switch
 must first be enabled on the switch. To enable all VLANs to work with the switch, run this command:
@@ -128,6 +148,11 @@ must first be enabled on the switch. To enable all VLANs to work with the switch
    # configure
    # vlan 2-4093
 ```
+
+2. HIL uses ssh to connect to these switches. Configure the switch to accept ssh connections.
+
+3. For any switchport that you register, please make sure that there are no
+VLANs added to it in trunk mode.
 
 #### switch_register
 
@@ -147,6 +172,13 @@ vlan, but this vlan should not be used for any networks.
 Register ports just like the powerconnect driver. e.g. ``gi1/0/5``.
 
 ### Nexus driver
+
+#### Switch preparation
+
+1. This switch uses ssh for connection. Be sure that ssh is enabled on the switch.
+
+2. For any switchport that you register, please make sure that there are no
+VLANs added to it in trunk mode.
 
 #### switch_register
 
@@ -177,6 +209,12 @@ The body of the api call request can then look like:
         "dummy_vlan": 2222
     }
 
+
+* If you choose to login using the public key, then provide any string as the
+password. Also, the user running the HIL network daemon should have access to the
+private key.
+
+
 #### switch_register_port
 
 Like the powerconnect driver, the Nexus driver accepts port names of the
@@ -184,6 +222,30 @@ same format accepted by the underlying switch, in this case (e.g.)
 ``ethernet 1/42``. The same concerns about validation apply.
 
 ### Brocade driver
+
+#### Switch preparation
+
+1. Make sure the REST server is enabled on the switch.
+
+```
+sw0# config
+sw0(config)# rbridge-id 1
+sw0(config-rbridge-id-1)# no http server shutdown
+```
+
+2. For every switchport that is registered in HIL, make sure that there are no
+VLANs attached to that port. Toggling switchport command usually does the trick.
+The switchport should be in access mode with VLAN 1.
+
+```
+sw0# config
+sw0(config)# interface TenGigabitEthernet 1/0/4
+sw0(conf-if-te-1/0/4)# no switchport
+sw0(conf-if-te-1/0/4)# switchport
+sw0(conf-if-te-1/0/4)# do show running-config interface TenGigabitEthernet 1/0/4
+
+```
+
 
 #### switch_register
 
@@ -214,6 +276,19 @@ The brocade driver accepts interface names the same way they would be accepted
 in the console of the switch, ex. ``101/0/10``.
 
 ### Dell Networking OS 9 driver
+
+#### Switch preparation
+
+1. Make sure the REST server is enabled on the switch.
+
+```
+Dell-S3048-ON#config
+MOC-Dell-S3048-ON(conf)#rest-server http
+```
+
+2. When a port is registered, ensure that it is turned off (otherwise it might be
+sitting on a default native vlan). HIL will then take care of turning on/off
+the port.
 
 #### switch_register
 
@@ -250,13 +325,86 @@ The body of the api call request will look like:
 It accepts interface names the same way they would be accepted in the console
 of the switch, ex. ``1/3``.
 
-When a port is registered, ensure that it is turned off (otherwise it might be
-sitting on a default native vlan). HIL will then take care of turning on/off
-the port.
-
 ### Using multiple switches
 
 Networks managed by HIL may span multiple switches. No special configuration
 of HIL itself is required; just register each switch as normal and ensure that
+all VLANs in the allocator's ``vlans`` option are trunked to every managed
+switch.
+
+
+## Openvswitch Driver (For development purpose only. Do not use in production.)
+
+This driver is made available so that developers can have real switch
+like functionality without having access to any real switch hardware.
+To get started you will need to:
+1.  install openvswitch in your development machine (or VM):
+
+```
+	yum install openvswitch #For fedora or Centos
+	# Following script will:
+	# --enable the openvswitch service;
+	# --Start the openvswitch server;
+	# --Show the status to the user.
+	for i in enable start status
+	do service openvswitch $i; done
+	ovs-vsctl show
+```
+
+2.  create a bridge and name it <switch_name>:
+
+```
+	ovs-vsctl add-br <switch_name>
+```
+
+
+3.  Add some ports to this bridge:
+
+```
+	ovs-vsctl add-port <switch_name> <port_name>
+```
+
+These are just illustrative examples. You may have to do more to setup
+your switch before using it with HIL.
+
+
+Optionally, a script is made available for reference at::
+
+	https://github.com/SahilTikale/HIL_contrib/blob/master/hilInYourLap/create_datacenter.sh
+
+**Warning**: Use the script at your own discretion.
+
+
+
+To register the driver with HIL, you will need the openvswitch bridge name,
+  username of your machine; sudo password of this user.
+
+#### switch_register
+
+To register an openvswitch, the ``"type"`` field of the request body
+must have a value of::
+
+        http://schema.massopencloud.org/haas/v0/switches/ovs
+
+In addition, it requires three extra fields:
+``"username"``, ``"hostname"``, and ``"password"``, which provide the necessary
+information to connect to the openvswitch.
+``"hostname"`` has to be the name of the bridge created in step 2.
+``"username"`` is the username for your development machine (or VM)
+``"password"`` is the sudo password of your machine (or VM).
+
+#### switch_register_port
+
+Openvswitch accepts any string for port name.
+Once you add a port to the openvswitch, you can register the same with HIL.
+
+**Notice**: Bridge and Ports must pre-exist in the openvswitch before registering
+them with HIL.
+
+### Using multiple switches
+
+Use-cases that involve configurations requiring access to multiple switches
+can be achieved by adding bridges of different names to openvswitch and
+registering them as separate switches and ensure that
 all VLANs in the allocator's ``vlans`` option are trunked to every managed
 switch.

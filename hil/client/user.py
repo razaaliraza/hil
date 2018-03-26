@@ -5,6 +5,7 @@ username & password auth.
 """
 import json
 from hil.client.base import ClientBase
+from hil.client.base import check_reserved_chars
 
 
 class User(ClientBase):
@@ -12,27 +13,29 @@ class User(ClientBase):
 
     manipulate users related objects and relations.
     """
+    def list(self):
+        """List all users"""
+        url = self.object_url('/auth/basic/users')
+        return self.check_response(self.httpClient.request("GET", url))
 
-    def create(self, username, password, privilege):
+    @check_reserved_chars(dont_check=['password', 'is_admin'])
+    def create(self, username, password, is_admin):
         """Create a user <username> with password <password>.
 
-        <privilege> may by either "admin" or "regular",
+        <is_admin> is a boolean,
         and determines whether a user is authorized for
         administrative privileges.
         """
         url = self.object_url('/auth/basic/user', username)
 
-        if privilege not in('admin', 'regular'):
-            raise ValueError(
-                "invalid privilege type: must be either  'admin' or 'regular'."
-                )
         payload = json.dumps({
-                'password': password, 'is_admin': privilege == 'admin',
+                'password': password, 'is_admin': is_admin,
                 })
         return self.check_response(
                 self.httpClient.request("PUT", url, data=payload)
                 )
 
+    @check_reserved_chars()
     def delete(self, username):
         """Deletes the user <username>. """
         url = self.object_url('/auth/basic/user', username)
@@ -40,6 +43,7 @@ class User(ClientBase):
                 self.httpClient.request("DELETE", url)
                 )
 
+    @check_reserved_chars()
     def add(self, user, project):
         """Adds <user> to a <project>. """
         url = self.object_url('/auth/basic/user', user, 'add_project')
@@ -48,6 +52,7 @@ class User(ClientBase):
                 self.httpClient.request("POST", url, data=payload)
                 )
 
+    @check_reserved_chars()
     def remove(self, user, project):
         """Removes all access of <user> to <project>. """
         url = self.object_url('/auth/basic/user', user, 'remove_project')
@@ -56,6 +61,7 @@ class User(ClientBase):
                 self.httpClient.request("POST", url, data=payload)
                 )
 
+    @check_reserved_chars(dont_check=['is_admin'])
     def set_admin(self, username, is_admin):
         """Changes the admin status of <username>.
 

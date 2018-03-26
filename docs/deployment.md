@@ -79,17 +79,22 @@ even the root user is untrusted.
 ## Networks
 
 ### Switch configuration
-In order to deploy HIL, at least one switch supported by one of HIL's
-drivers is required.
 
-This currently includes:
+* In order to deploy HIL, at least one switch supported by one of HIL's
+drivers is required. See the list of [supported switches](network-drivers.html)
 
-* Dell Powerconnect
-* Cisco Nexus 3500 & 5500 (other nexus switches may work as well, but
-  are untested)
+* HIL uses the `ssh` command to connect to the switches. As a consequence,
+administrators will need to connect to the switch once via ssh, as the
+user HIL will run as. This is because otherwise ssh will display the
+usual confirmation dialog for new hosts:
 
-``null`` and ``mock`` drivers are also included for testing and
-experimentation.
+    Are you sure you want to continue connecting (yes/no)?
+
+...which the HIL drivers do not handle.
+
+* Please make sure that there are no unwanted VLANs on a switchport when it is
+registered in HIL. There are more details about this in the description for
+supported switches.
 
 ### VLANs
 

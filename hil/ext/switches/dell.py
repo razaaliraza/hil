@@ -1,23 +1,9 @@
-# Copyright 2013-2017 Massachusetts Open Cloud Contributors
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the
-# License.  You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing,
-# software distributed under the License is distributed on an "AS
-# IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
-# express or implied.  See the License for the specific language
-# governing permissions and limitations under the License.
 """A switch driver for the Dell Powerconnect 5500 series.
 
 Currently the driver uses telnet to connect to the switch's console; in
 the long term we want to be using SNMP.
 """
 
-import pexpect
 import logging
 import schema
 import re
@@ -75,6 +61,9 @@ class PowerConnect55xx(Switch):
                                    "te1/0/12, gi1/12, or te1/3")
         return
 
+    def get_capabilities(self):
+        return ['nativeless-trunk-mode']
+
 
 class _PowerConnect55xxSession(_BaseSession):
     """session object for the power connect 5500 series"""
@@ -86,22 +75,19 @@ class _PowerConnect55xxSession(_BaseSession):
         self.switch = switch
         self.console = console
 
-    def _sendline(self, line):
-        logger.debug('Sending to switch %r: %r',
-                     self.switch, line)
-        self.console.sendline(line)
-
     @staticmethod
     def connect(switch):
         """connect to the switch, and log in."""
-        console = pexpect.spawn('telnet ' + switch.hostname)
-        console.expect('User Name:')
-        console.sendline(switch.username)
-        console.expect('Password:')
-        console.sendline(switch.password)
 
-        logger.debug('Logged in to switch %r', switch)
+        console = _console.login(switch)
 
+        # Send some string, so we expect the prompt again. Sending only new a
+        # line doesn't work, it returns some unwanted ANSI sequences in
+        # console.after
+        # Eg; main_prompts looks like '\r\n\r\r\x1b[Kconsole#'
+        # Here \x1b[K is unwanted and causes trouble parsing it.
+        # Sending some other random string doesn't have this issue.
+        console.sendline('some-unrecognized-command')
         prompts = _console.get_prompts(console)
         return _PowerConnect55xxSession(switch=switch,
                                         console=console,

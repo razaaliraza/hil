@@ -11,6 +11,8 @@ dist
 *.db
 /hil.cfg
 /testsuite.cfg
-/site-layout.json
+/site-layout.json*
 /.cache
 hil.log
+.eggs/
+.pytest_cache

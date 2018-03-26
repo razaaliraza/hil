@@ -1,16 +1,3 @@
-# Copyright 2014 Massachusetts Open Cloud Contributors (see AUTHORS).
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
 """Tests for hil.rest.
 
 This contains a somewhat awkward mix of unittest style classes and tests that
@@ -36,11 +23,6 @@ import pytest
 from hil.test_common import config_testsuite, fail_on_log_warnings
 
 fail_on_log_warnings = pytest.fixture(autouse=True)(fail_on_log_warnings)
-
-
-# This will get pulled in automaticaly, but if we declare it we'll get
-# better error messages if something goes wrong:
-pytest_plugins = 'pytest_catchlog'
 
 
 @pytest.fixture(autouse=True)
@@ -624,5 +606,5 @@ def test_dont_log(client, caplog):
         }))
         assert resp.status_code == 200, \
             "An error occured handling the request!"
-        for record in caplog.records():
+        for record in caplog.records:
             assert 'sensitive info' not in record.getMessage()

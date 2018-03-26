@@ -5,9 +5,6 @@ python:
 virtualenv:
   system_site_packages: true
 
-# See issue #812
-group: deprecated-2017Q2
-
 sudo: required
 dist: trusty
 
@@ -20,6 +17,7 @@ addons:
     packages:
       - apache2
       - libapache2-mod-wsgi
+      - golang
 
 branches:
   except:
@@ -36,10 +34,15 @@ install:
   - sh -e ci/keystone/install.sh
 
 script:
-  - sh -e ci/pep8_tests.sh
+  - sh -e ci/pycodestyle_tests.sh
   - sh -e ci/pylint_tests.sh
   - sh -e ci/no_trailing_whitespace.sh
   - sh -e ci/run_unit_tests.sh
   - sh -e ci/apache/run_integration_tests.sh
   - sh -e ci/keystone/run_integration_tests.sh
+  - sh -e ci/obmd/run_integration_tests.sh
   - sh -e ci/deployment-mock-networks/run_integration_tests.sh
+  - coverage report -m
+
+after_success:
+  - coveralls
