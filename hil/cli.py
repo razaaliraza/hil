@@ -552,6 +552,7 @@ def switch_register(switch, subtype, *args):
     hil switch_register switchname subtype switchinfo
     hil switch_register dell-1 'http://example.com/schema/url' '{"foo": "bar"}'
     """
+    #import pdb;pdb.set_trace()
     switch_api = "http://schema.massopencloud.org/haas/v0/switches/"
     if subtype == "nexus" or subtype == "delln3000":
         if len(args) == 4:

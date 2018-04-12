@@ -16,6 +16,7 @@ class Switch(ClientBase):
         return self.check_response(self.httpClient.request("GET", url))
 
     def register(self, switch, subtype, switchinfo):
+        #import pdb;pdb.set_trace()
         """Registers a switch with name <switch> and
         model <subtype> , and relevant arguments  in <*args>
 
@@ -45,6 +46,7 @@ class Port(ClientBase):
 
     @check_reserved_chars(slashes_ok=['port'])
     def register(self, switch, port):
+        #import pdb;pdb.set_trace()
         """Register a <port> with <switch>. """
         url = self.object_url('switch', switch, 'port', port)
         return self.check_response(self.httpClient.request("PUT", url))

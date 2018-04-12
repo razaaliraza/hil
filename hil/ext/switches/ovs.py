@@ -223,9 +223,10 @@ class Ovs(Switch, SwitchSession):
 
     def _add_vlan_to_trunk(self, port, vlan_id):
         """ Adds vlans to a trunk port. """
+        #import pdb; pdb.set_trace()
         port_info = self._interface_info(port)
-
-        if not port_info['trunks']:
+        netLen = len(port_info['trunks'])
+        if len > 0:
             shell_cmd = "sudo ovs-vsctl set port {port} trunks={vlans}".format(
                     port=port, vlans=vlan_id
                     )
