@@ -9,7 +9,6 @@ dist
 .venv
 .coverage
 *.db
-/hil.cfg
 /testsuite.cfg
 /site-layout.json*
 /.cache
